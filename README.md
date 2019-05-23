@@ -6,6 +6,6 @@ Let's assume we want to predict the survival chances of a passenger using the cl
 
 This method could not only provide us several, easily interpretable linear models, but also categories the input by the categorical variables. 
 
-We can also read the result in an excel format
+We can also read the result in an excel format, here is an early sample:
 
-![Alt text](.jpg?raw=true "")
+![Alt text](Sample_output.png?raw=true "")
