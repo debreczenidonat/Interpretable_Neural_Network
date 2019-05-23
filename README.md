@@ -8,3 +8,4 @@ This method could not only provide us several, easily interpretable linear model
 
 We can also read the result in an excel format
 
+![Alt text](.jpg?raw=true "")
