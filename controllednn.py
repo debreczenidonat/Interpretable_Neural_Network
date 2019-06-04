@@ -39,7 +39,9 @@ tt = pd.read_csv('titanic/train.csv')
 tt.columns
 tt = tt[['Survived', 'Pclass', 'Sex', 'Age', 'SibSp',  'Parch', 'Fare', 'Embarked']]
 tt = tt.dropna()
-tt['codedcats'] = tt['Pclass'].apply(lambda x: str(x)) + tt['Sex'] + tt['Embarked']
+tt['IsChild'] = tt['Age'] <= 10
+tt['IsChild'] = tt['IsChild'].apply(lambda x: str(x))
+tt['codedcats'] = tt['Pclass'].apply(lambda x: str(x)) + tt['Sex'] + tt['Embarked'] + tt['IsChild']
 LEN_OF_CATS = len(tt['codedcats'].unique())
 
 tok = Tokenizer(LEN_OF_CATS, lower=False)#, oov_token='Other'
@@ -53,15 +55,15 @@ tt['codedcats'] = pd.to_numeric(tt['codedcats'])
 
 ###NAME DATASETS
 ttcon = tt[['Age', 'SibSp', 'Parch', 'Fare']]
-ttd = tt[['Sex', 'Pclass', 'Embarked']]
+ttd = tt[['Sex', 'Pclass', 'Embarked', 'IsChild']]
 # ttdisc = tt[['female','male', '1', '2',  '3', 'C', 'Q',  'S']]
 # ttcoded = ttdisc['female'].astype(str) + ttdisc['male'].astype(str) + ttdisc['1'].astype(str) + ttdisc['2'].astype(str) + ttdisc['3'].astype(str) + ttdisc['C'].astype(str) + ttdisc['Q'].astype(str) + ttdisc['S'].astype(str)
 ttcoded = tt['codedcats']
 tttarget = tt[['Survived']]
 
-summaries = tt.groupby(by=['codedcats','Sex','Embarked','Pclass']).count().reset_index()
-summaries = summaries[['codedcats','Sex','Embarked','Pclass', 'Survived']]
-summaries.columns = ['codedcats','Sex','Embarked','Pclass', 'Count']
+summaries = tt.groupby(by=['codedcats','Sex','Embarked','Pclass','IsChild']).count().reset_index()
+summaries = summaries[['codedcats','Sex','Embarked','Pclass', 'IsChild', 'Survived']]
+summaries.columns = ['codedcats','Sex','Embarked','Pclass', 'IsChild', 'Count']
 
 
 ###CUSTOM REG FUNCS
@@ -177,7 +179,7 @@ raw_contIII = 1/(1+np.exp(-1*raw_contII))
 #### print out
 (ttcon.values - model.layers[2].get_weights()[0]) / np.sqrt(model.layers[2].get_weights()[1])
 
-exceled_logreg_coeffs_std = model.layers[4].get_weights()[0]/np.reshape(np.sqrt(model.layers[2].get_weights()[1]), newshape=[-1, 1])
+
 
 
 exceled_std = pd.DataFrame(data={'Mean': model.layers[2].get_weights()[0], 'Var': model.layers[2].get_weights()[1]}).T
@@ -189,8 +191,9 @@ exceled_logreg_coeffs_exp = pd.DataFrame(data=np.exp(np.transpose(model.layers[4
 exceled_logreg_bias_exp = pd.DataFrame(data=np.exp(np.transpose(model.layers[4].get_weights()[1])), columns=['Bias'])
 
 #to see the effects on a unit increment of the original feature
+exceled_logreg_coeffs_std = model.layers[4].get_weights()[0]/np.reshape(np.sqrt(model.layers[2].get_weights()[1]), newshape=[-1, 1])
 exceled_logreg_coeffs_exp_std = pd.DataFrame(data=np.exp(np.transpose(exceled_logreg_coeffs_std)), columns=ttcon.columns)
-
+#
 
 exceled_emb = pd.DataFrame(data=np.transpose(np.squeeze(model.layers[3].get_weights())))
 summaries
