@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 import seaborn as sbn
 
+from sklearn.model_selection import train_test_split
+from sklearn.cluster import KMeans
 
 #from keras.preprocessing.sequence import TimeseriesGenerator
 from keras.models import Sequential, Model
@@ -42,7 +44,7 @@ tt = tt.dropna()
 tt['IsChild'] = tt['Age'] <= 10
 tt['IsChild'] = tt['IsChild'].apply(lambda x: str(x))
 tt['codedcats'] = tt['Pclass'].apply(lambda x: str(x)) + tt['Sex'] + tt['Embarked'] + tt['IsChild']
-LEN_OF_CATS = len(tt['codedcats'].unique())
+LEN_OF_CATS = len(tt['codedcats'].unique()) + 1
 
 tok = Tokenizer(LEN_OF_CATS, lower=False)#, oov_token='Other'
 tok.fit_on_texts(tt['codedcats'])
@@ -51,15 +53,22 @@ tt['codedcats'] = tok.texts_to_sequences(tt['codedcats'])
 tt['codedcats'] = tt['codedcats'].apply(lambda x: np.squeeze(x).astype(float))
 tt['codedcats'] = pd.to_numeric(tt['codedcats'])
 
+#tt, testtt = train_test_split(tt)
 
-
+CONT_VARS = ['Age', 'SibSp', 'Parch', 'Fare']
+DISC_VARS = ['Sex', 'Pclass', 'Embarked', 'IsChild']
+CODED_VAR = ['codedcats']
+TARGET_VAR = ['Survived']
 ###NAME DATASETS
-ttcon = tt[['Age', 'SibSp', 'Parch', 'Fare']]
-ttd = tt[['Sex', 'Pclass', 'Embarked', 'IsChild']]
-# ttdisc = tt[['female','male', '1', '2',  '3', 'C', 'Q',  'S']]
-# ttcoded = ttdisc['female'].astype(str) + ttdisc['male'].astype(str) + ttdisc['1'].astype(str) + ttdisc['2'].astype(str) + ttdisc['3'].astype(str) + ttdisc['C'].astype(str) + ttdisc['Q'].astype(str) + ttdisc['S'].astype(str)
-ttcoded = tt['codedcats']
-tttarget = tt[['Survived']]
+def selecting_var_types(i, cont_vars=[], discrete_vars=[], coded_var=[], target_var=[]):
+    ttcon = i[cont_vars]
+    ttd = i[discrete_vars]
+    ttcoded = i[coded_var]
+    tttarget = i[target_var]
+    return ttcon, ttd, ttcoded, tttarget
+
+ttcon, ttd, ttcoded, tttarget = selecting_var_types(tt, CONT_VARS, DISC_VARS, CODED_VAR, TARGET_VAR)
+#testttcon, testttd, testttcoded, testtttarget = selecting_var_types(testtt, CONT_VARS, DISC_VARS, CODED_VAR, TARGET_VAR)
 
 summaries = tt.groupby(by=['codedcats','Sex','Embarked','Pclass','IsChild']).count().reset_index()
 summaries = summaries[['codedcats','Sex','Embarked','Pclass', 'IsChild', 'Survived']]
@@ -96,7 +105,7 @@ def custom_activity_regIV(vects):
 
 ###BUILD MODEL
 
-NUMBER_OF_LIN_MODS = 5
+NUMBER_OF_LIN_MODS = 3
 
 input_layer_cont = Input(shape=[4])
 bn1 = BatchNormalization(center=False, scale=False)(input_layer_cont)
@@ -134,6 +143,7 @@ model.summary()
 early_stopping = EarlyStopping(monitor='loss', min_delta=0.01, patience=600, verbose=0, mode='auto')#monitor='val_loss'
 h = model.fit([ttcon, ttcoded], tttarget, epochs=8000, verbose=1, batch_size=2000, callbacks=[early_stopping])#, validation_data=(ts_test_features, ts_test_target), callbacks=[early_stopping]
 
+#STANDARD PRINTING BLOCK
 model.get_config()
 for l in model.layers:
     print(l.get_weights())
@@ -141,6 +151,7 @@ for l in model.layers:
 #model.evaluate([ttcon, ttcoded], tttarget)
 
 
+#CHECKING SOME LAYER OUTPUTS
 test = [ttcon.values.astype('float32'), ttcoded.values.astype('float32')]
 
 get_disc_layer_output = K.function([*model.input], [model.layers[3].output])
@@ -158,6 +169,7 @@ for i in range(layer_disc_output.shape[0]):
     results = np.append(results, (np.dot(layer_disc_output[i], layer_cont_output[i])))
 
 
+#CHECKING SOME CALCULATIONS
 #results = 1/(1+np.exp(-1*results))
 preds = model.predict(test)
 print(preds[5])
@@ -176,11 +188,8 @@ raw_contIII = 1/(1+np.exp(-1*raw_contII))
 
 
 
-#### print out
+#### PRINTING OUT RESULTS
 (ttcon.values - model.layers[2].get_weights()[0]) / np.sqrt(model.layers[2].get_weights()[1])
-
-
-
 
 exceled_std = pd.DataFrame(data={'Mean': model.layers[2].get_weights()[0], 'Var': model.layers[2].get_weights()[1]}).T
 
@@ -215,13 +224,24 @@ with pd.ExcelWriter('output.xlsx') as writer:  # doctest: +SKIP
                                        sheet_name='vis')
 
 
-#PLOT EMBEDDING RESULTS
 
-vis_emb = pd.DataFrame(layer_disc_output)
+
+#PLOT EMBEDDING RESULTS TODO
+
+vis_emb = pd.DataFrame(np.squeeze(layer_disc_output))
 letters = ["A","B","C","D","E","F","G","H","I","J","K"]
 vis_emb.columns = letters[0: vis_emb.columns.__len__()]
 
+#CLUSTERING (with visualization)
+km = KMeans(n_clusters=NUMBER_OF_LIN_MODS, random_state=0).fit(vis_emb)
+vis_emb["clust"] = km.predict(vis_emb)
 
+g = sbn.PairGrid(vis_emb, vars=letters[0: vis_emb.columns.__len__()], hue="clust")
+g.map_upper(plt.scatter)
+g.map_lower(sbn.kdeplot)
+g.map_diag(sbn.kdeplot, lw=3, legend=False)
+
+###
 #
 #
 # fig = plt.figure()
