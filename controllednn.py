@@ -5,6 +5,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import seaborn as sbn
+import pickle
+
+from data_transformations import step_i_creating_discrete_features, step_ii_code_discrete, step_iii_selecting_var_types, custom_activity_regIV
 
 from sklearn.model_selection import train_test_split
 from sklearn.cluster import KMeans
@@ -29,78 +32,47 @@ from keras.initializers import RandomNormal
 from keras.initializers import Zeros
 from sklearn import preprocessing
 from keras.constraints import UnitNorm, MinMaxNorm, NonNeg
-from keras.regularizers import l1_l2
+from keras.regularizers import Regularizer
 
 K.tensorflow_backend._get_available_gpus()
-
-
 
 
 ###READ IN DATA
 tt = pd.read_csv('titanic/train.csv')
 tt.columns
-tt = tt[['Survived', 'Pclass', 'Sex', 'Age', 'SibSp',  'Parch', 'Fare', 'Embarked']]
+USED_COLUMNS = ['Survived', 'Pclass', 'Sex', 'Age', 'SibSp',  'Parch', 'Fare', 'Embarked']
+tt = tt[USED_COLUMNS]
 tt = tt.dropna()
-tt['IsChild'] = tt['Age'] <= 10
-tt['IsChild'] = tt['IsChild'].apply(lambda x: str(x))
-tt['codedcats'] = tt['Pclass'].apply(lambda x: str(x)) + tt['Sex'] + tt['Embarked'] + tt['IsChild']
+
+tt = step_i_creating_discrete_features(tt)
+
 LEN_OF_CATS = len(tt['codedcats'].unique()) + 1
 
 tok = Tokenizer(LEN_OF_CATS, lower=False)#, oov_token='Other'
 tok.fit_on_texts(tt['codedcats'])
 
-tt['codedcats'] = tok.texts_to_sequences(tt['codedcats'])
-tt['codedcats'] = tt['codedcats'].apply(lambda x: np.squeeze(x).astype(float))
-tt['codedcats'] = pd.to_numeric(tt['codedcats'])
+with open('tokenizer.pickle', 'wb') as f:
+    # Pickle the 'data' dictionary using the highest protocol available.
+    pickle.dump(tok, f, pickle.HIGHEST_PROTOCOL)
 
+tt=step_ii_code_discrete(tt, tok)
 #tt, testtt = train_test_split(tt)
 
+###CATEGORIZING VARS
 CONT_VARS = ['Age', 'SibSp', 'Parch', 'Fare']
 DISC_VARS = ['Sex', 'Pclass', 'Embarked', 'IsChild']
 CODED_VAR = ['codedcats']
 TARGET_VAR = ['Survived']
-###NAME DATASETS
-def selecting_var_types(i, cont_vars=[], discrete_vars=[], coded_var=[], target_var=[]):
-    ttcon = i[cont_vars]
-    ttd = i[discrete_vars]
-    ttcoded = i[coded_var]
-    tttarget = i[target_var]
-    return ttcon, ttd, ttcoded, tttarget
 
-ttcon, ttd, ttcoded, tttarget = selecting_var_types(tt, CONT_VARS, DISC_VARS, CODED_VAR, TARGET_VAR)
+###NAME DATASETS
+ttcon, ttd, ttcoded, tttarget = step_iii_selecting_var_types(tt, CONT_VARS, DISC_VARS, CODED_VAR, TARGET_VAR)
 #testttcon, testttd, testttcoded, testtttarget = selecting_var_types(testtt, CONT_VARS, DISC_VARS, CODED_VAR, TARGET_VAR)
 
+
+###CREATING TABLE FOR SUMMARIES TABLE
 summaries = tt.groupby(by=['codedcats','Sex','Embarked','Pclass','IsChild']).count().reset_index()
 summaries = summaries[['codedcats','Sex','Embarked','Pclass', 'IsChild', 'Survived']]
 summaries.columns = ['codedcats','Sex','Embarked','Pclass', 'IsChild', 'Count']
-
-
-###CUSTOM REG FUNCS
-def custom_activity_reg(vects, a=1.0):
-    y = K.l2_normalize(vects)
-    #return a * (1.0 - K.sum(y * y))
-    return a * (1.0 - K.sum(y * y * y * y))
-
-
-def custom_activity_regII(vects):
-    y = vects - K.mean(K.identity(vects), keepdims=True, axis=-1)
-    s = K.cast(K.shape(vects)[-1], 'float32')
-    fourth_momentum = K.sum(y * y * y * y) / s
-    second_momentum = K.sum(y * y) / s
-    return (fourth_momentum / (second_momentum * second_momentum))-3
-
-
-def custom_activity_regIII(vects):
-    return 1 / K.abs(K.mean(K.identity(vects)) - K.max(K.identity(vects)))
-
-
-def custom_activity_regIV(vects):
-    a = K.abs(K.mean(K.identity(vects)) / K.max(K.identity(vects)))
-    b = K.abs(K.sum(K.identity(vects)) / K.max(K.identity(vects)))
-    c = K.abs(K.max(K.identity(vects)) - 1)
-    d = K.abs(K.sum(K.identity(vects)) - 1)
-    return 0.2*(K.log(b) + K.log(1+c))
-
 
 
 ###BUILD MODEL
@@ -110,7 +82,7 @@ NUMBER_OF_LIN_MODS = 3
 input_layer_cont = Input(shape=[4])
 bn1 = BatchNormalization(center=False, scale=False)(input_layer_cont)
 input_layer_disc = Input(shape=[1])
-emb1 = Embedding(LEN_OF_CATS, NUMBER_OF_LIN_MODS, embeddings_constraint=NonNeg(), activity_regularizer=custom_activity_regIV, embeddings_initializer=Orthogonal())(input_layer_disc)#,
+emb1 = Embedding(LEN_OF_CATS, NUMBER_OF_LIN_MODS, embeddings_constraint=NonNeg(), activity_regularizer=custom_activity_regIV(0.2), embeddings_initializer=Orthogonal())(input_layer_disc)#,
 flat1 = Flatten()(emb1)
 #densea = Dense(3, activation='sigmoid', use_bias=False, kernel_constraint=, kernel_initializer=Zeros())(flat1)#kernel_initializer=Orthogonal(gain=1),kernel_regularizer=regularizers.l2(0.9)
 denseb = Dense(NUMBER_OF_LIN_MODS, activation='sigmoid',use_bias=True)(bn1)
@@ -142,6 +114,9 @@ model.summary()
 #TRAIN MODEL
 early_stopping = EarlyStopping(monitor='loss', min_delta=0.01, patience=600, verbose=0, mode='auto')#monitor='val_loss'
 h = model.fit([ttcon, ttcoded], tttarget, epochs=8000, verbose=1, batch_size=2000, callbacks=[early_stopping])#, validation_data=(ts_test_features, ts_test_target), callbacks=[early_stopping]
+
+
+model.save('intNNmodelsave.h5')
 
 #STANDARD PRINTING BLOCK
 model.get_config()
