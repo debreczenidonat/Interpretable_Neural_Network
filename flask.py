@@ -24,69 +24,61 @@ def initial_transformation_for_model(input_list):
     return(df)
 
 
+def transformations_for_the_model(tuple):
+    tuple = initial_transformation_for_model(tuple)
+    tuple = step_i_creating_discrete_features(tuple)
 
-tuple = initial_transformation_for_model(test)
-tuple = step_i_creating_discrete_features(tuple)
+    with open('tokenizer.pickle', 'rb') as t:
+        tok = pickle.load(t)
 
-with open('tokenizer.pickle', 'rb') as t:
-    tok = pickle.load(t)
+    tuple = step_ii_code_discrete(tuple, tok)
 
-tuple = step_ii_code_discrete(tuple, tok)
+    ###CATEGORIZING VARS
+    CONT_VARS = ['Age', 'SibSp', 'Parch', 'Fare']
+    DISC_VARS = ['Sex', 'Pclass', 'Embarked', 'IsChild']
+    CODED_VAR = ['codedcats']
+    TARGET_VAR = ['Survived']
 
-###CATEGORIZING VARS
-CONT_VARS = ['Age', 'SibSp', 'Parch', 'Fare']
-DISC_VARS = ['Sex', 'Pclass', 'Embarked', 'IsChild']
-CODED_VAR = ['codedcats']
-TARGET_VAR = ['Survived']
+    ttcon, ttd, ttcoded, tttarget = step_iii_selecting_var_types(tuple, CONT_VARS, DISC_VARS, CODED_VAR, TARGET_VAR)
 
-ttcon, ttd, ttcoded, tttarget = step_iii_selecting_var_types(tuple, CONT_VARS, DISC_VARS, CODED_VAR, TARGET_VAR)
+    del ttd, tttarget
+    merged = [ttcon.values.astype('float32'), ttcoded.values.astype('float32')]
+    return merged
 
-del ttd, tttarget
+test = transformations_for_the_model(test)
 
 ### LOADING MODEL
 new_model = load_model('intNNmodelsave.h5', custom_objects={'custom_activity_regIV': custom_activity_regIV})
 
-test_merge = [ttcon.values.astype('float32'), ttcoded.values.astype('float32')]
 new_model.predict(test)
-#
-# @app.route('/aaa/<int:id>')
-# def print_id(id):
-#     return('Hello %s' % id)
-#
-# @app.route('/bbb/<guest>')
-# def hello_world(guest):
-#     return('Hello %s' % guest)
-#
-# @app.route('/redirector/<name>')
-# def redir(name):
-#     if name=='Aladar':
-#         return(redirect(url_for('print_id', id=2)))
-#     else:
-#         return(redirect(url_for('hello_world', guest=name)))
-#
-# @app.route('/success/<name>')
-# def success(name):
-#    return 'welcome %s' % name
-#
-# @app.route('/login',methods = ['POST', 'GET'])
-# def login():
-#    if request.method == 'POST':
-#       user = request.form['nm']
-#       return redirect(url_for('success',name = user))
-#    else:
-#       user = request.args.get('nm')
-#       return redirect(url_for('success',name = user))
 
 
-# @app.route('/')
-# def student():
-#    return render_template('student.html')
-#
-# @app.route('/result',methods = ['POST', 'GET'])
-# def result():
-#    if request.method == 'POST':
-#       result = request.form
-#       return render_template("result.html",result = result)
-#
-# if __name__ == '__main__':
-#    app.run()
+@app.route('/')
+def passenger_creator():
+   return render_template('passenger_creator.html')
+
+@app.route('/result',methods = ['POST', 'GET'])
+def result():
+   if request.method == 'POST':
+      raw_input = request.form
+      print(raw_input)
+      raw_input = [i for i in raw_input.values()]
+      input = (int(raw_input[0]), raw_input[1], int(raw_input[2]), int(raw_input[3]), int(raw_input[4]), int(raw_input[5]), raw_input[6])
+      input = transformations_for_the_model(input)
+      print(input)
+      prediction = new_model.predict(input)
+      return render_template("result.html", result = raw_input, prediction = prediction)
+
+if __name__ == '__main__':
+   app.run()
+
+# < table
+# border = 1 >
+# { %
+# for key, value in result.items() %}
+# < tr >
+# < th > {{key}} < / th >
+# < td > {{value}} < / td >
+# < / tr >
+# { % endfor %}
+# < / table >
