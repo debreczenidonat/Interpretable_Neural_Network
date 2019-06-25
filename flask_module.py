@@ -50,6 +50,7 @@ test = transformations_for_the_model(test)
 ### LOADING MODEL
 new_model = load_model('intNNmodelsave.h5', custom_objects={'custom_activity_regIV': custom_activity_regIV})
 
+
 new_model.predict(test)
 
 
